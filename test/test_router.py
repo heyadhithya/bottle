@@ -3,6 +3,7 @@
 import unittest
 import bottle
 import warnings
+from .tools import wsgistr
 
 
 class TestRouter(unittest.TestCase):
@@ -17,7 +18,7 @@ class TestRouter(unittest.TestCase):
             self.r.add(path, method, target, **ka)
 
     def match(self, path, method='GET'):
-        env = {'PATH_INFO': path, 'REQUEST_METHOD': method}
+        env = {'PATH_INFO': wsgistr(path), 'REQUEST_METHOD': method}
         if self.CGI:
             env['wsgi.run_once'] = 'true'
         return self.r.match(env)
@@ -54,6 +55,10 @@ class TestRouter(unittest.TestCase):
 
     def testUnicode(self):
         self.assertMatches('/uni/<x>', '/uni/瓶', x='瓶')
+        self.assertMatches('/瓶', '/瓶')
+        with self.assertRaises(bottle.HTTPError) as error:
+            self.match('/瓶', 'POST')
+        self.assertEqual(405, error.exception.status_code)
 
     def testValueErrorInFilter(self):
         self.r.add_filter('test', lambda x: ('.*', int, int))

@@ -49,6 +49,33 @@ class TestRequest(unittest.TestCase):
         # No path at all
         self.assertEqual('/', BaseRequest({}).path)
 
+    def test_unicode_paths_preserve_wsgi_environ(self):
+        raw_path = tools.wsgistr('/äöü/next')
+        raw_script = tools.wsgistr('/日本語')
+        env = {'PATH_INFO': raw_path, 'SCRIPT_NAME': raw_script}
+        request = BaseRequest(env)
+        self.assertEqual('/äöü/next', request.path)
+        self.assertEqual('/日本語/', request.script_name)
+        self.assertEqual('/日本語/äöü/next', request.fullpath)
+        self.assertEqual('http://127.0.0.1/%E6%97%A5%E6%9C%AC%E8%AA%9E/%C3%A4%C3%B6%C3%BC/next',
+                         request.url)
+        request.path_shift(1)
+        self.assertEqual(tools.wsgistr('/日本語/äöü'), env['SCRIPT_NAME'])
+        self.assertEqual('/next', env['PATH_INFO'])
+        request.path_shift(-1)
+        self.assertEqual({'PATH_INFO': raw_path, 'SCRIPT_NAME': raw_script},
+                         {key: env[key] for key in ('PATH_INFO', 'SCRIPT_NAME')})
+
+    def test_pathshift_preserves_non_utf8_bytes(self):
+        env = {'PATH_INFO': '/\xff/next', 'SCRIPT_NAME': ''}
+        request = BaseRequest(env)
+        self.assertEqual('/\udcff/next', request.path)
+        request.path_shift(1)
+        self.assertEqual('/\xff', env['SCRIPT_NAME'])
+        self.assertEqual('/\udcff/', request.script_name)
+        request.path_shift(-1)
+        self.assertEqual('/\xff/next', env['PATH_INFO'])
+
     def test_method(self):
         self.assertEqual(BaseRequest({}).method, 'GET')
         self.assertEqual(BaseRequest({'REQUEST_METHOD':'GET'}).method, 'GET')

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import bottle
-from .tools import ServerTestBase, api
+from .tools import ServerTestBase, api, wsgistr
 from bottle import response
 
 class TestAppMounting(ServerTestBase):
@@ -18,6 +18,41 @@ class TestAppMounting(ServerTestBase):
         self.assertBody('äöü', '/mount/test/äöü')
         self.app.route('/route/<param>', callback=lambda param: param)
         self.assertBody('äöü', '/route/äöü')
+
+    def test_mount_wsgi_unicode_path_bug602(self):
+        def app(environ, start_response):
+            return self.subapp(environ, start_response)
+
+        self.app.mount('/mount/', app)
+        self.assertBody('äöü', '/mount/test/äöü')
+        self.assertBody('日本語', '/mount/test/日本語')
+
+    def test_mount_wsgi_preserves_path_encoding(self):
+        paths = []
+
+        def app(environ, start_response):
+            paths.append((environ['SCRIPT_NAME'], environ['PATH_INFO']))
+            start_response('200 OK', [])
+            return [b'WSGI']
+
+        self.app.mount('/日本語/', app)
+        self.assertBody('WSGI', '/日本語/äöü')
+        self.assertEqual([(wsgistr('/日本語'), wsgistr('/äöü'))], paths)
+
+    def test_nested_wsgi_mount_unicode_url(self):
+        @self.subapp.route('/url')
+        def get_url():
+            return self.subapp.get_url('test')
+
+        self.subapp.route('/test', name='test', callback=lambda: 'test')
+        inner = bottle.Bottle()
+        inner.mount('/nested/', lambda env, start: self.subapp(env, start))
+        self.app.mount('/日本語/', lambda env, start: inner(env, start))
+        self.assertBody('/日本語/nested/test', '/日本語/nested/url')
+        env = {'SCRIPT_NAME': ''}
+        self.assertBody('äöü', '/日本語/nested/test/äöü', env=env)
+        self.assertEqual(wsgistr('/日本語/nested/test/äöü'), env['PATH_INFO'])
+        self.assertEqual('/', env['SCRIPT_NAME'])
 
     def test_mount_order_bug581(self):
         self.app.mount('/test/', self.subapp)

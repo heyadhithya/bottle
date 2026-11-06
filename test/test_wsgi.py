@@ -96,6 +96,17 @@ class TestWsgi(ServerTestBase):
         def test(): raise Exception(touni('Unicode äöüß message.'))
         self.assertStatus(500, '/')
 
+    def test_critical_error_unicode_path(self):
+        @self.app.route('/日本語')
+        def fail():
+            raise RuntimeError('handler failed')
+
+        def fail_again(error):
+            raise RuntimeError('error handler failed')
+
+        self.app.error_handler[500] = fail_again
+        self.assertInBody('/日本語', '/日本語')
+
     def test_utf8_url(self):
         """ WSGI: UTF-8 Characters in the URL """
         @bottle.route('/my-öäü/<string>')

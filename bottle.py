@@ -430,7 +430,7 @@ class Router:
     def match(self, environ):
         """ Return a (target, url_args) tuple or raise HTTPError(400/404/405). """
         verb = environ['REQUEST_METHOD'].upper()
-        path = environ['PATH_INFO'] or '/'
+        path = _wsgi_recode(environ['PATH_INFO']) or '/'
 
         methods = ('PROXY', 'HEAD', 'GET', 'ANY') if verb == 'HEAD' else ('PROXY', verb, 'ANY')
 
@@ -829,7 +829,7 @@ class Bottle:
 
     def get_url(self, routename, **kargs):
         """ Return a string that matches a named route """
-        scriptname = request.environ.get('SCRIPT_NAME', '').strip('/') + '/'
+        scriptname = request.script_name
         location = self.router.build(routename, **kargs).lstrip('/')
         return urljoin(urljoin('/', scriptname), location)
 
@@ -937,8 +937,7 @@ class Bottle:
         return tob(template(ERROR_PAGE_TEMPLATE, e=res, template_settings=dict(name='__ERROR_PAGE_TEMPLATE')))
 
     def _handle(self, environ):
-        path = environ['bottle.raw_path'] = environ['PATH_INFO']
-        environ['PATH_INFO'] = _wsgi_recode(path)
+        environ['bottle.raw_path'] = environ['PATH_INFO']
 
         environ['bottle.app'] = self
         request.bind(environ)
@@ -1071,7 +1070,7 @@ class Bottle:
             _try_close(out)
             if not self.catchall: raise
             err = '<h1>Critical error while processing request: %s</h1>' \
-                  % html_escape(environ.get('PATH_INFO', '/'))
+                  % html_escape(_wsgi_recode(environ.get('PATH_INFO', '/')))
             if DEBUG:
                 err += '<h2>Error:</h2>\n<pre>\n%s\n</pre>\n' \
                        '<h2>Traceback:</h2>\n<pre>\n%s\n</pre>\n' \
@@ -1142,9 +1141,9 @@ class BaseRequest:
 
     @property
     def path(self):
-        """ The value of ``PATH_INFO`` with exactly one prefixed slash (to fix
+        """ The decoded value of ``PATH_INFO`` with exactly one prefixed slash (to fix
             broken clients and avoid the "empty path" edge case). """
-        return '/' + self.environ.get('PATH_INFO', '').lstrip('/')
+        return '/' + _wsgi_recode(self.environ.get('PATH_INFO', '')).lstrip('/')
 
     @property
     def method(self):
@@ -1416,7 +1415,7 @@ class BaseRequest:
             level (server or routing middleware) before the application was
             called. This script path is returned with leading and tailing
             slashes. """
-        script_name = self.environ.get('SCRIPT_NAME', '').strip('/')
+        script_name = _wsgi_recode(self.environ.get('SCRIPT_NAME', '')).strip('/')
         return '/' + script_name + '/' if script_name else '/'
 
     def path_shift(self, shift=1):
@@ -1426,7 +1425,8 @@ class BaseRequest:
            :param shift: The number of path segments to shift. May be negative
                          to change the shift direction. (default: 1)
         """
-        script, path = path_shift(self.environ.get('SCRIPT_NAME', '/'), self.path, shift)
+        script, path = path_shift(self.environ.get('SCRIPT_NAME', '/'),
+                                 self.environ.get('PATH_INFO', '/'), shift)
         self['SCRIPT_NAME'], self['PATH_INFO'] = script, path
 
     @property
